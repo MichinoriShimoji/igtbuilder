@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IGT Builder: Excel → 3/4行インターリニアグロス（Word出力つき）</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    :root{ --fg:#222; --muted:#666; --accent:#2962ff; --bg:#fff; --soft:#f5f7fb; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; --serif: "Noto Serif", "Times New Roman", serif; --sans: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans", sans-serif; }
+    html,body{margin:0; padding:0; background:var(--soft); color:var(--fg); font-family:var(--sans);} 
+    header{background:linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); position:sticky; top:0; z-index:5; box-shadow:0 4px 20px rgba(0,0,0,.15)}
+    .header-wrap{max-width:1080px; margin:0 auto; padding:16px 20px;}
+    .logo-container{display:flex; align-items:center; gap:16px}
+    .logo-icon{
+      width:48px; height:48px; 
+      background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius:12px; display:flex; align-items:center; justify-content:center;
+      box-shadow:0 4px 15px rgba(102,126,234,0.4);
+    }
+    .logo-icon svg{width:28px; height:28px; color:#fff}
+    .logo-text h1{
+      font-size:28px; font-weight:700; margin:0; 
+      background:linear-gradient(90deg, #fff 0%, #a5b4fc 100%);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+      background-clip:text; letter-spacing:-0.5px;
+    }
+    .logo-text .tagline{font-size:13px; color:#94a3b8; margin-top:2px; font-weight:400}
+    .wrap{max-width:1080px; margin:0 auto; padding:20px;}
+    .panel{background:#fff; border-radius:14px; box-shadow:0 2px 12px rgba(0,0,0,.05); padding:16px 18px; margin:20px 0;}
+    .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+    .row > *{margin:4px 0}
+    input[type="file"]{border:1px dashed #bbb; padding:10px; background:#fafafa; border-radius:10px}
+    label{font-size:14px; color:var(--muted)}
+    button{border:none; background:var(--accent); color:#fff; padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:600}
+    button:disabled{background:#aaa; cursor:not-allowed}
+    .quiet{background:#eee; color:#333}
+    .note{font-size:13px; color:var(--muted)}
+    .grid{display:grid; grid-template-columns:1fr; gap:12px}
+    .igt{background:#fff; border-radius:12px; padding:12px 14px; border:1px solid #f0f0f0; overflow-x:auto}
+    
+    /* テーブルレイアウト */
+    .igt-table{border-collapse:collapse; table-layout:auto; width:auto}
+    .igt-table td{vertical-align:top; white-space:nowrap}
+    
+    /* 短い文（5語以下）: 広めの間隔 */
+    .igt-table-short td{padding:3px 12px}
+    
+    /* 中程度の文（6-10語）: 標準の間隔 */
+    .igt-table-medium td{padding:3px 8px}
+    
+    /* 長い文（11語以上）: 狭い間隔 */
+    .igt-table-long td{padding:3px 4px}
+    
+    .igt-hide-borders td, .igt-hide-borders {border:none}
+    .igt-show-borders td{border:1px dashed #ddd}
+    .igt-num-td{width:3.2em; text-align:right; color:#333; padding-right:12px !important}
+    .gloss{font-family:var(--serif); }
+    .textline{font-family:var(--mono)}
+    .trans{font-family:var(--serif); white-space:normal; max-width:800px}
+    .mode-group{display:flex; gap:8px}
+    .mode-btn{background:#eee; color:#333}
+    .mode-btn.active{background:var(--accent); color:#fff}
+    .footer{font-size:12px; color:var(--muted); text-align:center; margin:24px 0}
+    .abbr-sc{ font-variant-caps: all-small-caps; }
+    
+    /* 画像コピーボタン */
+    .igt-wrapper{position:relative; margin-bottom:12px}
+    .igt-copy-btn{
+      display:inline-flex; align-items:center; gap:4px;
+      margin-top:6px; margin-left:auto;
+      background:#f0f0f0; border:1px solid #ccc; border-radius:6px;
+      padding:4px 10px; font-size:12px; color:#333; cursor:pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .igt-copy-btn:hover{background:#e0e0e0; border-color:#999}
+    .igt-copy-btn.copied{background:#4caf50; color:#fff; border-color:#4caf50}
+    .igt-copy-btn svg{width:14px; height:14px}
+    .igt-btn-row{display:flex; justify-content:flex-end; padding:0 4px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-wrap" style="display:flex; justify-content:space-between; align-items:center">
+      <div class="logo-container">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7V4h16v3"></path>
+            <path d="M9 20h6"></path>
+            <path d="M12 4v16"></path>
+          </svg>
+        </div>
+        <div class="logo-text">
+          <h1>IGT Builder</h1>
+          <div class="tagline">Excel → Interlinear Glossed Text（Word出力対応）</div>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="color:#64748b; font-size:11px; line-height:1.6">
+          <span style="color:#94a3b8">3列:</span> text / gloss / translation<br>
+          <span style="color:#94a3b8">4列:</span> surface / text / gloss / translation
+        </div>
+        <div id="ingestInfo" style="color:#a5b4fc; font-size:13px; margin-top:4px"></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="panel">
+      <div class="row">
+        <input id="file" type="file" accept=".xlsx,.xls" /><button class="quiet" id="clearAll">クリア</button>
+      </div>
+      <div class="row" style="align-items:center">
+        <div class="mode-group" role="group" aria-label="IGT行数の選択">
+          <button id="mode3" class="mode-btn active" title="原文行なし（3行）">3行グロス</button>
+          <button id="mode4" class="mode-btn" title="原文行あり（4行）">4行グロス</button>
+        </div>
+        <label>フォントサイズ: <input id="fontSize" type="number" value="14" min="10" max="24" style="width:64px"> px</label>
+        <label><input type="checkbox" id="toggleBorders"> デバッグ用に罫線を表示</label>
+        <label><input type="checkbox" id="forceLower" checked> Word出力時、<b>gloss を小型大文字化</b>（小文字化+SmallCaps）</label>
+      </div>
+      <div class="row">
+        <button id="makeWord" disabled>Word（.docx）をダウンロード</button>
+      </div>
+    </div>
+
+    <div id="warnings" class="panel" style="display:none"></div>
+
+    <div id="out" class="grid"></div>
+
+    <div class="footer">
+      <div style="margin-bottom:6px">
+        <a href="https://doi.org/10.5281/zenodo.16925638" target="_blank" style="color:var(--accent); text-decoration:none">
+          <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.16925638.svg" alt="DOI" style="vertical-align:middle">
+        </a>
+      </div>
+      <div>Shimoji, Michinori. (2025). IGT Builder. Zenodo. <a href="https://doi.org/10.5281/zenodo.16925638" target="_blank" style="color:var(--accent)">https://doi.org/10.5281/zenodo.16925638</a></div>
+    </div>
+  
+    <div id="glossPanel" class="panel" style="display:none"></div>
+</div>
+
+<script>
+  const state = { examples: [], fontSize: 14, showBorders: false, forceLower: true, mode: '3' };
+  
+  // === Embedded Glossary (baked from Excel) ===
+  const DEFAULT_MAP = {"ACC": "accusative", "NOM": "nominative", "GEN": "genitive", "DAT": "dative", "TOP": "topic", "COP": "copula", "ERG": "ergative", "ABS": "absolutive", "LOC": "locative", "ALL": "allative", "ABL": "ablative", "INS": "instrumental", "COM": "comitative", "PL": "plural", "SG": "singular", "PRS": "present", "PST": "past", "FUT": "future", "IPFV": "imperfective", "PFV": "perfective", "1SG": "first person singular", "2SG": "second person singular", "3SG": "third person singular", "1PL": "first person plural", "2PL": "second person plural", "3PL": "third person plural"};
+  const BAKED_MAP   = {"1.0": "first person", "2.0": "second person", "3.0": "third person", "A": "agent-like argument of canonical transitive verb", "AA": "adverbial adjective", "ABILT": "ability potential", "ABL": "ablative", "ABS": "absolutive form", "ABT": "ability potential", "AC": "adversative conjunction", "ACC": "accusative", "ACOM": "anti-comissive", "ADD": "additive\nadditional", "ADJ": "inflectional adjectival affix", "ADJR": "adjectivizer", "ADJVZ": "adjectivizer", "ADJZ": "adjectivizer", "ADN": "adnominal", "ADNMLZ": "adnominalizer", "ADNZ": "adnominalizer", "ADR": "addressive", "ADT": "additive\nadditional", "ADV": "adverbalizer", "ADVL": "adverbalizer", "ADVR": "adverbalizer", "ADVRS": "adversative", "ADVS": "adversative", "ADVZ": "adverbalizer", "AFF": "affirmative", "AGNR": "agent nominalizer", "AGR": "agreement", "AJLZ": "adjectivizer", "AL": "allative", "ALL": "allative", "ALLOC": "allocutive", "ALZ": "adverbalizer", "AMBG": "ambiguity", "ANT": "anterior", "ANTC": "anticipated future", "ANTIP": "antipassive", "APPL": "applicative", "APPR": "approximate\napproximative", "APPROX": "approximate\napproximative", "APRX": "approximate\napproximative", "ART": "article", "ASC": "associative", "ASP": "aspect", "ASPL": "associative plural", "ASR": "assertive\nassertion", "ASRT": "assertive\nassertion", "ASS": "assertive\nassertion", "ASSPL": "assocative plural", "ASSUM": "assumed evidential", "ATT": "attributive", "ATTR": "attributive", "AUX": "auxiliary", "AVLZ": "adverbalizer", "AVR": "aversive", "AVZ": "adverbalizer", "AZ": "adjectivizer", "BACK": "background", "BEN": "benefactive", "CAP": "capability", "CAS": "causative", "CAUS": "causative", "CC": "cordinate conjunction", "CEX": "counter expression", "CF": "counter factual", "CFM": "confirmation\nconfirmative", "CFP": "clause-final particle", "CHN": "chaining verb", "CIRC": "circumstantial", "CJF": "conjunctive form", "CJP": "conjunctive particle", "CL": "classifier", "CLF": "classifier", "CM": "compound marker", "CMP": "comparative", "CMPL": "complementizer", "CMPR": "comparative", "CNC": "concessive", "CND": "conditional", "CNF": "confirmation\nconfirmative", "CNFM": "confirmation\nconfirmative", "CNG": "complete nagation", "CNJ": "conjunction", "CNS": "consecutive", "CNT": "continuous\ncontinuative", "CNTN": "continuous\ncontinuative", "CNTR": "contrastive", "COH": "", "COM": "comitative", "COMP": "comparative", "COMPL": "completive", "COMPR": "comparative", "CON": "conative", "CONC": "concessive", "CONCES": "concessive", "CONCESS": "concessive", "COND": "conditional", "CONF": "confirmation\nconfirmative", "CONJ": "conjunction\nconjunctive", "CONJEC": "conjecture", "CONT": "continuous\ncontinuative", "COP": "copula", "COR": "corrective", "CORE": "core argument", "CP": "complement", "CPL": "completive", "CPLF": "completive", "CPOT": "capable potential", "CRCM": "circumstantial", "CRTN": "certainty", "CSL": "causal", "CSS": "concessive", "CSV": "concessive", "CTX": "contextual", "CVB": "converb", "D": "determiner", "DAS": "desirious\ndesiderative", "DAT": "dative", "DBT": "doubt", "DE": "direct evidential", "DEC": "declarative", "DECL": "declarative", "DEF": "definitive", "DEM": "demonstrative", "DES": "desirious\ndesiderative", "DESID": "desirious\ndesiderative", "DET": "determiner", "DFOC": "defocus", "DHD": "dummy head", "DIM": "diminutive", "DIMIN": "diminutive", "DIR": "directional verb", "DIRC": "directive\ndirectional", "DIREV": "direct evidential", "DIS": "distal", "DISC": "discourse marker", "DISJ": "disjunctive", "DIST": "distal", "DISTR": "distributive", "DM": "discourse marker", "DOUBT": "doubt", "DRG": "derogative", "DSC": "discourse marker", "DSR": "desiderative", "DU": "dual", "DUB": "dubitative", "DUR": "durative", "DVLZ": "deverbalizer", "E": "epenthetic morpheme", "ECHO": "echo element", "EMO": "emotional", "EMP": "emphatic\nemphasis", "EMPH": "emphatic\nemphasis", "ENDO": "endocentric", "ENU": "enumerative", "EPI": "epistemic", "ERG": "ergative", "ESS": "essive", "EVID": "evidential", "EVD": "evidential", "EXCL": "exclusive", "EXCLAM": "exclamative", "EXCLM": "exclamative", "EXL": "exaltive", "EXM": "exemplative", "EXO": "exocentric", "EXP": "explanation", "EXPER": "experiential", "EXPL": "exemplative", "F": "feminine", "FAM": "familiar", "FIL": "filler", "FILL": "filler", "FMN": "fomal noun", "FIN": "finite", "FL": "filler", "FN": "fomal noun", "FNS": "", "FNT": "finite", "FOC": "focus", "FP": "final particle", "FRN": "formal", "FUT": "future", "GN": "genitive", "GEN": "genitive", "GER": "gerund", "GOL": "goal", "HAB": "habitual", "HABIT": "habitual", "HBT": "habitual", "HES": "hesitation", "HMB": "humble", "HON": "honorific", "HONV": "honorific verb", "HOR": "hortative", "HORT": "hortative", "HS": "hearsay", "HSY": "hearsay", "HUM": "humble", "HUMV": "humble verb", "HYP": "hypothesical", "ICP": "inceptive", "ILST": "illustrative", "IM": "interrogative mood", "IMP": "imperative", "IMPF": "imperfective", "IMPRF": "imperfective", "IMPOT": "impotential", "INC": "inclusive", "INCH": "inchoative", "INCHO": "inchoative", "INCL": "inclusive", "IND": "indicative", "INDEF": "indefinite", "INDET": "indefinite", "INDF": "indefinite", "INDFZ": "indefinitizer", "INF": "inferential", "INFER": "inferential", "INFERN": "inferential", "INFR": "inferential", "INGR": "ingressive", "INS": "instrumental", "INST": "instrumental", "INSTR": "instrumental", "INT": "intentional", "INTER": "interrogative", "INTERJ": "interjection", "INTJ": "interjection", "INTR": "intransitive", "IPF": "imperfective", "IPFV": "imperfective", "IPRF": "imperfective", "IRLS": "irrealis", "IRR": "irrealis", "IRREV": "", "ITR": "intrerrogative", "JUDG": "judging", "KP": "kakari particles", "LAT": "lative", "LCTN": "low certainty", "LEN": "lengthening", "LF": "lengthened (infinitival) form", "LIM": "limitative", "LINT": "lexical intransitive", "LMT": "limitative", "LNK": "linker", "LOC": "locative", "LOG": "logophoric", "LST": "listing", "LTR": "lexical transitive", "LV": "light verb", "M": "mood", "MAL": "malefactive", "MAN": "manner", "MED": "medial verb", "MES": "mesioproximal", "MIR": "mirativity\nmirative", "MOD": "modality", "MODAL": "modality", "MOL": "modality", "MRT": "mirativity\nmirative", "MSB": "kakari-musubi", "N": "neuter", "N-": "non-", "NDUR": "non-durative", "NEG": "negation\nnegative", "NFOC": "non-focus", "NHON": "non-honorific", "NL": "nominal", "NLZ": "nominalizer\nnominalization", "NM": "nominative", "NMLZ": "nominalizer\nnominalization", "NMNL": "nominalizer\nnominalization", "NMNLZ": "nominalizer\nnominalization", "NMR": "nominalizer\nnominalization", "NMZ": "nominalizer\nnominalization", "NOM": "nominative", "NONPAST": "non-past", "NPREF": "non-perfective", "NPRF": "non-perfect", "NPST": "non-past", "NR": "nominalizer\nnominalization", "NRT": "narrative", "NSF": "non-subject focus", "NUM": "numeral", "NZ": "nominalizer\nnominalization", "OBJ": "object", "OBL": "obligative", "OBLG": "obligative", "ODN": "ordinary number", "OMP": "onomatopoeia", "OMPT": "onomatopoeia", "ONLY": "only", "ONM": "onomatopoeia", "OPT": "optative", "ORD": "ordinal numbers", "P": "patient-like argument of canonical transitive verb", "PAR": "pragmatic marker", "PARA": "parallel", "PART": "particle", "PASS": "passive", "PAST": "past", "PERF": "perfect", "PF": "perfect", "PFOC": "predicate focus", "PFT": "perfect", "PFV": "perfective", "PFX": "prefix", "PL": "plural", "PLN": "place noun", "PLT": "polite", "PLQ": "polar question", "PLUR": "plural", "PN": "personal name", "POL": "polite", "POS": "possibility", "POSS": "possessive", "POT": "potential", "PPL": "participle", "PR": "prompt", "PREC": "precative", "PRED": "predicative", "PREP": "preparative", "PRES": "present", "PRESUM": "presumptive", "PREV": "previsional", "PRF": "perfect", "PRG": "progressive", "PRH": "prohibitive", "PRM": "permissive", "PROG": "progressive", "PROH": "prohibitive", "PROS": "prospective", "PROSP": "prospective", "PROX": "proximal/proximate", "PRPR": "preparative", "PRS": "prospective", "PRT": "particle", "PRV": "provisional", "PRVSE": "previsional", "PS": "property stem", "PST": "past", "PSU": "persuasive", "PT": "potential", "PTCP": "participle", "PUR": "purposive", "PURP": "purposive", "Q": "question particle/marker", "QP": "question particle", "QT": "quotative", "QUESTION": "question", "QUO": "quotative", "QUOT": "quotative", "Q.W": "question Yes-No", "Q.Y": "question WH", "REASON": "reason", "REC": "recitation", "RECP": "reciprocal", "RED": "reduplication", "REF": "reflexive", "REFL": "reflexive", "REL": "relative", "REP": "reported\nｒeportative", "RES": "reason", "RESP": "respect\nrespectful", "RESTR": "restrictive", "RFL": "reflexive", "RGR": "regret", "RHET": "rhetorical", "RLS": "realis", "RLZ": "relativizer", "RPT": "reported\nｒeportative", "RSL": "resultative", "RSP": "respect\nrespectful", "RST": "restrictive", "S": "single argument of canonical intransitive verb", "SBJ": "subject", "SBJV": "subjunctive", "SE": "stem extender", "SEEM": "seeming", "SEL": "selection\nselective", "SEQ": "sequential", "SF": "sentence final particle", "SFP": "sentence final particle", "SFS": "sentence final suffix", "SG": "singular", "SGS": "suggestive\nsuggestion", "SGST": "suggestive\nsuggestion", "SIM": "simultaneous", "SIMIL": "similative", "SIML": "simultaneous", "SLD": "solidarity", "SLFQ": "self-question", "SOL": "solidarity", "SPC": "special form", "SPNT": "spontateity", "SUP": "supine", "STA": "state verb", "STAT": "stative", "STM": "stem extension", "STV": "stative verb", "SUB": "subsidiary", "SUFF": "suffix", "SUGS": "suggestive\nsuggestion", "SUPP": "suppositional", "TAG": "tag question particle", "TER": "terminative", "TERM": "terminative", "THM": "thematic vowel", "TEM": "temporal", "TEMP": "temporal", "TIM": "time", "TNR": "temporal nominalizer", "TOP": "topic", "TR": "transitive", "TTL": "title", "U": "single argument of intransitive verb", "UMRK": "unmarked verbal affix", "UPDT": "information updater", "VA": "verbal adjective", "VBLZ": "verbalizer", "VBZ": "verbalizer", "VFOC": "verbal focus", "VLZ": "verbalizer", "VOC": "vocative", "VOL": "volitional\nvolitive", "VR": "verbalizer", "VRB": "verbalizer", "VZ": "verbalizer", "WH": "wh question", "WHQ": "wh question", "YNQ": "yes-no question", "-": "affix boudary", "=": "clitic boudary", "+": "stem boundary\ncompoud boundary", "~": "reduplication boundary", "<>": "loanword"};
+  let   GLOSS_MAP   = Object.assign({}, DEFAULT_MAP, BAKED_MAP);
+
+  function collectTags(examples){
+    const dict = Object.create(null);
+    (examples||[]).forEach(ex=>{
+      (ex.glossWords||[]).forEach(word=>{
+        if(!word) return;
+        word.split(/[-=]/).forEach(p=>{
+          p.split('.').forEach(a=>{
+            a = (a||'').trim();
+            if(!a) return;
+            const tok = a.replace(/[^A-Za-z0-9]/g, '');
+            if(tok && /^[A-Z0-9]+$/.test(tok) && /[A-Z]/.test(tok)){
+              dict[tok] = true;
+            }
+          });
+        });
+      });
+    });
+    return Object.keys(dict).sort();
+  }
+
+  function renderGlossPanel(){
+    const panel = document.getElementById('glossPanel');
+    if(!panel) return;
+    const tags = collectTags(state.examples);
+    if(!tags.length){ panel.style.display='none'; panel.innerHTML=''; return; }
+    const rows = tags.map(t=>{ const full=(GLOSS_MAP[t]||''); return `<tr><td style="font-variant-caps:all-small-caps">${t.toLowerCase()}</td><td>${full}</td></tr>`; }).join('');
+    panel.style.display = '';
+    panel.innerHTML = '<b>Gloss List</b><table style="border-collapse:collapse;margin-top:6px"><tbody>'+rows+'</tbody></table>';
+  }
+
+  function normalizeHeaders(obj){
+    const m = {}; for(const k of Object.keys(obj)) m[k.trim().toLowerCase()] = obj[k];
+    const pick = (cands)=>{ for(const key of cands){ if(m[key] != null && String(m[key]).trim() !== '') return String(m[key]).trim(); } return ''; };
+    let surface = pick(['surface','raw','plain','text_raw','原文','表層']);
+    let text = pick(['text','seg','segtext','text_seg','分割','形態素']);
+    let gloss = pick(['gloss','グロス']);
+    let translation = pick(['translation','訳','全文訳','翻訳']);
+    if(!text && !gloss && !translation){
+      const vals = Object.values(m).map(v=>String(v).trim()).filter(v=>v!=='');
+      if(vals.length===3){ [text,gloss,translation] = vals; }
+      if(vals.length===4){ [surface,text,gloss,translation] = vals; }
+    }
+    return { surface, text, gloss, translation };
+  }
+
+  function splitWords(s){ return s ? s.trim().split(/ +/) : []; }
+
+  function toExamples(rows){
+    return rows.map(r=>{
+      const {surface, text, gloss, translation} = normalizeHeaders(r);
+      const tw = splitWords(text);
+      const gw = splitWords(gloss);
+      const sw = splitWords(surface);
+      // 4行モードに備えて、surface/text/glossの最大長を取る
+      const n = Math.max(tw.length, gw.length, sw.length);
+      while(tw.length<n) tw.push('');
+      while(gw.length<n) gw.push('');
+      while(sw.length<n) sw.push('');
+      return { surface, surfaceWords: sw, textWords: tw, glossWords: gw, translation };
+    }).filter(ex=> ex.textWords.join('').length+ex.glossWords.join('').length+ex.translation.length>0);
+  }
+
+  function chooseBestSheet(wb){
+    let best = []; let bestName = '';
+    for(const name of wb.SheetNames){
+      const ws = wb.Sheets[name];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      const ex = toExamples(rows);
+      if(ex.length > best.length){ best = ex; bestName = name; }
+    }
+    return {examples: best, name: bestName};
+  }
+
+  function setExamples(examples, originLabel){
+    state.examples = examples;
+    document.getElementById('makeWord').disabled = state.examples.length===0;
+    document.getElementById('ingestInfo').textContent = originLabel + (examples.length? ` ｜ 取込行数: ${examples.length}` : '');
+    buildPreview();
+    renderGlossPanel();
+  }
+
+  function setMode(mode){
+    state.mode = mode;
+    document.getElementById('mode3').classList.toggle('active', mode==='3');
+    document.getElementById('mode4').classList.toggle('active', mode==='4');
+    buildPreview();
+  }
+
+  function buildPreview(){
+    const out = document.getElementById('out');
+    out.innerHTML = '';
+    out.style.fontSize = state.fontSize + 'px';
+
+    const warnBox = document.getElementById('warnings');
+    const warns = [];
+
+    state.examples.forEach((ex, i)=>{
+      const ncols = Math.max(ex.textWords.length, ex.glossWords.length, ex.surfaceWords.length, 1);
+      
+      // 3行モードの警告
+      if(ex.textWords.length !== ex.glossWords.length){
+        warns.push(`(${i+1}) text/gloss語数不一致: text=${ex.textWords.length} / gloss=${ex.glossWords.length}`);
+      }
+      
+      // 4行モードの警告（surface行がある場合）
+      if(state.mode === '4'){
+        const surfaceCount = splitWords(ex.surface).length;
+        const textCount = splitWords(ex.textWords.join(' ')).length;
+        if(surfaceCount > 0 && surfaceCount !== textCount){
+          warns.push(`(${i+1}) ⚠️ 4行モード: surface(${surfaceCount}語)とtext(${textCount}語)の単語数が異なります。各行の単語境界を揃えてください。`);
+        }
+      }
+
+      const table = document.createElement('table');
+      // 語数に応じてクラスを設定
+      let sizeClass = 'igt-table-medium';
+      if(ncols <= 5) sizeClass = 'igt-table-short';
+      else if(ncols >= 11) sizeClass = 'igt-table-long';
+      
+      table.className = `igt-table ${sizeClass} ` + (state.showBorders ? 'igt-show-borders' : 'igt-hide-borders');
+
+      if(state.mode === '4'){
+        const tr0 = document.createElement('tr');
+        const tdNum0 = document.createElement('td');
+        tdNum0.className = 'igt-num-td';
+        tdNum0.rowSpan = 4;
+        tdNum0.textContent = `(${i+1})`;
+        tr0.appendChild(tdNum0);
+        for(let c=0;c<ncols;c++){
+          const td=document.createElement('td'); td.className='textline'; td.textContent = ex.surfaceWords[c] || ''; tr0.appendChild(td);
+        }
+        table.appendChild(tr0);
+      }
+
+      const tr1 = document.createElement('tr');
+      if(state.mode === '3'){
+        const tdNum = document.createElement('td'); tdNum.className = 'igt-num-td'; tdNum.rowSpan = 3; tdNum.textContent = `(${i+1})`; tr1.appendChild(tdNum);
+      }
+      for(let c=0;c<ncols;c++){ const td=document.createElement('td'); td.className='textline'; td.textContent = ex.textWords[c] || ''; tr1.appendChild(td); }
+      table.appendChild(tr1);
+
+      const tr2 = document.createElement('tr');
+      for(let c=0;c<ncols;c++){ const td=document.createElement('td'); td.className='gloss'; td.textContent = ex.glossWords[c] || ''; tr2.appendChild(td); }
+      table.appendChild(tr2);
+
+      const tr3 = document.createElement('tr');
+      const td=document.createElement('td'); td.className='trans'; td.colSpan = ncols; td.textContent = ex.translation || '';
+      tr3.appendChild(td); table.appendChild(tr3);
+
+      // igt要素（画像化対象）
+      const igtEl = document.createElement('div'); 
+      igtEl.className = 'igt'; 
+      igtEl.appendChild(table);
+      
+      // ラッパー
+      const wrapper = document.createElement('div');
+      wrapper.className = 'igt-wrapper';
+      wrapper.appendChild(igtEl);
+      
+      // ボタン行（例文の下に配置）
+      const btnRow = document.createElement('div');
+      btnRow.className = 'igt-btn-row';
+      
+      // 画像でコピーボタン（アイコン付き）
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'igt-copy-btn';
+      copyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>画像でコピー</span>`;
+      copyBtn.addEventListener('click', () => copyAsImage(igtEl, copyBtn));
+      btnRow.appendChild(copyBtn);
+      
+      wrapper.appendChild(btnRow);
+      out.appendChild(wrapper);
+    });
+
+    if(warns.length){ warnBox.style.display = ''; warnBox.innerHTML = '<b>警告</b><br>'+warns.map(w=>`• ${w}`).join('<br>'); }
+    else{ warnBox.style.display = 'none'; warnBox.innerHTML = ''; }
+  }
+
+  document.getElementById('file').addEventListener('change', async (ev)=>{
+    const f = ev.target.files[0]; if(!f) return;
+    const data = await f.arrayBuffer();
+    const wb = XLSX.read(data, {type:'array'});
+    const {examples, name} = chooseBestSheet(wb);
+    setExamples(examples, `Excel: ${f.name}（シート: ${name||'不明'}）`);
+  });
+
+  document.getElementById('clearAll').addEventListener('click', ()=> setExamples([], '（未読込）'));
+  document.getElementById('fontSize').addEventListener('input', (e)=>{ state.fontSize = parseInt(e.target.value||'14',10); buildPreview(); });
+  document.getElementById('toggleBorders').addEventListener('change', (e)=>{ state.showBorders = !!e.target.checked; buildPreview(); });
+  document.getElementById('forceLower').addEventListener('change', (e)=>{ state.forceLower = !!e.target.checked; });
+  document.getElementById('mode3').addEventListener('click', ()=> setMode('3'));
+  document.getElementById('mode4').addEventListener('click', ()=> setMode('4'));
+
+  // Build gloss runs for Word with selective small-caps
+  function buildGlossRunsDocx(text, TextRun){
+    const parts = String(text||'').split(/([\-=.])/);
+    const runs = [];
+    for(let i=0;i<parts.length;i++){
+      const seg = parts[i];
+      if(seg==null || seg==='') continue;
+      if(seg==='-' || seg==='=' || seg==='.') { 
+        runs.push(new TextRun({text:seg})); 
+        continue; 
+      }
+      const tok = seg.replace(/[^A-Za-z0-9]/g, '');
+      if(tok && /^[A-Z0-9]+$/.test(tok) && /[A-Z]/.test(tok)){
+        runs.push(new TextRun({ text: seg.toLowerCase(), smallCaps: true }));
+      }else{
+        runs.push(new TextRun({ text: seg }));
+      }
+    }
+    return runs;
+  }
+
+  // 翻訳文の言語判定（日本語なら「」、それ以外なら''）
+  function wrapTranslation(text){
+    if(!text) return '';
+    const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(text);
+    return hasJapanese ? `「${text}」` : `'${text}'`;
+  }
+
+  // 文字幅を概算（全角=2、半角=1）
+  function estimateCharWidth(str){
+    let w = 0;
+    for(const ch of str){
+      w += (ch.charCodeAt(0) > 255) ? 2 : 1;
+    }
+    return w;
+  }
+
+  // ページ幅に収まるように語を分割（チャンク化）
+  function chunkWords(ex, maxWidth, numberIndent){
+    const ncols = Math.max(ex.textWords.length, ex.glossWords.length, ex.surfaceWords.length, 1);
+    const colWidths = [];
+    for(let c=0; c<ncols; c++){
+      const candidates = [
+        ex.textWords[c] || '',
+        ex.glossWords[c] || '',
+        ex.surfaceWords[c] || ''
+      ];
+      const maxW = Math.max(...candidates.map(s => estimateCharWidth(s)));
+      // 余白を大きめに取る: 1文字あたり150 DXA + 余白300 DXA
+      colWidths.push(Math.max(maxW * 150 + 300, 900));
+    }
+    
+    // チャンクに分割
+    const chunks = [];
+    let chunk = { start: 0, end: 0 };
+    let currentWidth = numberIndent;
+    
+    for(let c=0; c<ncols; c++){
+      if(currentWidth + colWidths[c] > maxWidth && c > chunk.start){
+        chunk.end = c;
+        chunks.push(chunk);
+        chunk = { start: c, end: c };
+        currentWidth = numberIndent;
+      }
+      currentWidth += colWidths[c];
+      chunk.end = c + 1;
+    }
+    if(chunk.end > chunk.start){
+      chunks.push(chunk);
+    }
+    
+    // 各チャンクのタブストップを計算（全チャンクで720から開始）
+    return chunks.map((ch, chunkIdx) => {
+      const tabs = [];
+      let pos = numberIndent; // 常に720から開始
+      for(let c=ch.start; c<ch.end; c++){
+        tabs.push({ position: pos });
+        pos += colWidths[c];
+      }
+      return { ...ch, tabs, colWidths: colWidths.slice(ch.start, ch.end) };
+    });
+  }
+
+  document.getElementById('makeWord').addEventListener('click', async ()=>{
+    if(!state.examples.length) return;
+    
+    const { Document, Packer, Paragraph, TextRun, TabStopType } = docx;
+    const children = [];
+    const numberIndent = 720;
+    const maxWidth = 8500;
+
+    state.examples.forEach((ex, i)=>{
+      const chunks = chunkWords(ex, maxWidth, numberIndent);
+      
+      chunks.forEach((chunk, chunkIdx) => {
+        const isFirst = (chunkIdx === 0);
+        const tabs = chunk.tabs.map(t => ({ type: TabStopType.LEFT, position: t.position }));
+        
+        const paraPropsFirst = {
+          tabStops: tabs,
+          indent: { left: numberIndent, hanging: numberIndent }
+        };
+        
+        const contProps = {
+          tabStops: tabs,
+          indent: { left: numberIndent }
+        };
+
+        // 4行モード: surface → text → gloss を各チャンク内で出力
+        if(state.mode === '4'){
+          // 1. surface行
+          const runs0 = [];
+          if(isFirst){
+            runs0.push(new TextRun({ text: `(${i+1})` }));
+          }
+          for(let c=chunk.start; c<chunk.end; c++){
+            if(isFirst || c > chunk.start) runs0.push(new TextRun({ text: '\t' }));
+            runs0.push(new TextRun({ text: ex.surfaceWords[c] || '' }));
+          }
+          children.push(new Paragraph({ 
+            ...(isFirst ? paraPropsFirst : contProps), 
+            children: runs0 
+          }));
+          
+          // 2. text行
+          const runs1 = [];
+          for(let c=chunk.start; c<chunk.end; c++){
+            if(c > chunk.start) runs1.push(new TextRun({ text: '\t' }));
+            runs1.push(new TextRun({ text: ex.textWords[c] || '' }));
+          }
+          children.push(new Paragraph({ ...contProps, children: runs1 }));
+          
+          // 3. gloss行
+          const runs2 = [];
+          for(let c=chunk.start; c<chunk.end; c++){
+            if(c > chunk.start) runs2.push(new TextRun({ text: '\t' }));
+            if(state.forceLower){
+              const glossRuns = buildGlossRunsDocx(ex.glossWords[c] || '', TextRun);
+              runs2.push(...glossRuns);
+            } else {
+              runs2.push(new TextRun({ text: ex.glossWords[c] || '' }));
+            }
+          }
+          children.push(new Paragraph({ ...contProps, children: runs2 }));
+          
+        } else {
+          // 3行モード: text → gloss を各チャンク内で出力
+          const runs1 = [];
+          if(isFirst){
+            runs1.push(new TextRun({ text: `(${i+1})` }));
+          }
+          for(let c=chunk.start; c<chunk.end; c++){
+            if(isFirst || c > chunk.start) runs1.push(new TextRun({ text: '\t' }));
+            runs1.push(new TextRun({ text: ex.textWords[c] || '' }));
+          }
+          children.push(new Paragraph({ 
+            ...(isFirst ? paraPropsFirst : contProps), 
+            children: runs1 
+          }));
+          
+          // gloss行
+          const runs2 = [];
+          for(let c=chunk.start; c<chunk.end; c++){
+            if(c > chunk.start) runs2.push(new TextRun({ text: '\t' }));
+            if(state.forceLower){
+              const glossRuns = buildGlossRunsDocx(ex.glossWords[c] || '', TextRun);
+              runs2.push(...glossRuns);
+            } else {
+              runs2.push(new TextRun({ text: ex.glossWords[c] || '' }));
+            }
+          }
+          children.push(new Paragraph({ ...contProps, children: runs2 }));
+        }
+      });
+
+      // Translation行
+      const transText = wrapTranslation(ex.translation);
+      children.push(new Paragraph({
+        indent: { left: numberIndent },
+        children: [new TextRun({ text: transText })]
+      }));
+
+      // 例文間の空行
+      children.push(new Paragraph({ children: [] }));
+    });
+
+    // グロス略語リストを収集
+    const usedGlosses = new Set();
+    state.examples.forEach(ex => {
+      ex.glossWords.forEach(word => {
+        // 略語を抽出（ハイフン、イコール、ピリオドで分割）
+        const parts = String(word || '').split(/[\-=.]/);
+        parts.forEach(part => {
+          const abbr = part.trim().toUpperCase();
+          if(abbr && GLOSS_MAP[abbr]){
+            usedGlosses.add(abbr);
+          }
+        });
+      });
+    });
+
+    // グロスリストがあれば追加
+    if(usedGlosses.size > 0){
+      // 区切り線（空行2つ）
+      children.push(new Paragraph({ children: [] }));
+      children.push(new Paragraph({ children: [] }));
+      
+      // 「Abbreviations」見出し
+      children.push(new Paragraph({
+        children: [new TextRun({ text: 'Abbreviations', bold: true, size: 24 })]
+      }));
+      children.push(new Paragraph({ children: [] }));
+      
+      // アルファベット順にソート
+      const sortedGlosses = Array.from(usedGlosses).sort();
+      
+      // 各略語をリスト
+      sortedGlosses.forEach(abbr => {
+        const meaning = GLOSS_MAP[abbr] || '';
+        // 改行が含まれる場合は最初の行だけ使用
+        const firstMeaning = meaning.split('\n')[0];
+        children.push(new Paragraph({
+          children: [
+            new TextRun({ text: abbr.toLowerCase(), smallCaps: true }),
+            new TextRun({ text: '\t' }),
+            new TextRun({ text: firstMeaning })
+          ],
+          tabStops: [{ type: TabStopType.LEFT, position: 1440 }]
+        }));
+      });
+    }
+
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children
+      }]
+    });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, 'igt_from_excel.docx');
+  });
+
+  // 画像としてコピー
+  async function copyAsImage(element, btn){
+    const btnText = btn.querySelector('span');
+    const originalText = '画像でコピー';
+    
+    try {
+      const canvas = await html2canvas(element, {
+        backgroundColor: '#ffffff',
+        scale: 2, // 高解像度
+        logging: false
+      });
+      
+      canvas.toBlob(async (blob) => {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
+          btnText.textContent = 'コピー完了!';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btnText.textContent = originalText;
+            btn.classList.remove('copied');
+          }, 1500);
+        } catch (err) {
+          // フォールバック: 画像をダウンロード
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'igt_example.png';
+          a.click();
+          URL.revokeObjectURL(url);
+          btnText.textContent = 'DL完了';
+          setTimeout(() => { btnText.textContent = originalText; }, 1500);
+        }
+      }, 'image/png');
+    } catch (err) {
+      console.error('画像生成エラー:', err);
+      btnText.textContent = 'エラー';
+      setTimeout(() => { btnText.textContent = originalText; }, 1500);
+    }
+  }
+</script>
+
+</body>
+</html>
